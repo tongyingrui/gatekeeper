@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dummy-provider
+  name: approvals-validator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      run: dummy-provider
+      run: approvals-validator
   template:
     metadata:
       labels:
-        run: dummy-provider
+        run: approvals-validator
     spec:
       containers:
-      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.4
+      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.5
         imagePullPolicy: IfNotPresent
-        name: dummy-provider
+        name: approvals-validator
         ports:
         - containerPort: 8090
           protocol: TCP

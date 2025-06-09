@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: dummy-provider
+  name: approvals-validator
 spec:
   ports:
   - port: 8090
     protocol: TCP
     targetPort: 8090
   selector:
-    run: dummy-provider
+    run: approvals-validator
   sessionAffinity: None

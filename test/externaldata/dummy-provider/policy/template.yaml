@@ -1,12 +1,12 @@
 apiVersion: templates.gatekeeper.sh/v1beta1
 kind: ConstraintTemplate
 metadata:
-  name: k8sexternaldata
+  name: approvalsvalidator
 spec:
   crd:
     spec:
       names:
-        kind: K8sExternalData
+        kind: ApprovalsValidator
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -30,7 +30,7 @@ spec:
           # k10 := sprintf("%v, %v", [k9, k9])
           
           response := external_data({
-            "provider": "dummy-provider",
+            "provider": "approvals-provider",
             "keys": [kk]
           })
 
