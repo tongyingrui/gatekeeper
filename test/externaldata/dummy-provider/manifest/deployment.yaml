@@ -13,7 +13,7 @@ spec:
         run: dummy-provider
     spec:
       containers:
-      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.3
+      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.4
         imagePullPolicy: IfNotPresent
         name: dummy-provider
         ports:
