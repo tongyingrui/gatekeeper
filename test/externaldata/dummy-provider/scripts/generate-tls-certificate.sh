@@ -5,14 +5,12 @@ set -o nounset
 set -o pipefail
 
 GATEKEEPER_NAMESPACE=${GATEKEEPER_NAMESPACE:-gatekeeper-system}
-REPO_ROOT=$(dirname "${BASH_SOURCE[0]}")/../../../..
-cd "${REPO_ROOT}" || exit 1
 
 generate() {
     # generate CA key and certificate
     echo "Generating CA key and certificate for dummy provider..."
     openssl genrsa -out ca.key 2048
-    openssl req -new -x509 -days 1 -key ca.key -subj "/O=Gatekeeper/CN=Gatekeeper Root CA" -out ca.crt
+    openssl req -new -x509 -days 365 -key ca.key -subj "/O=Gatekeeper/CN=Gatekeeper Root CA" -out ca.crt
 
     # generate server key and certificate
     echo "Generating server key and certificate for dummy provider..."
@@ -21,7 +19,8 @@ generate() {
     openssl x509 -req -extfile <(printf "subjectAltName=DNS:dummy-provider.${GATEKEEPER_NAMESPACE}") -days 1 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
 }
 
-mkdir -p "${REPO_ROOT}/test/externaldata/dummy-provider/certs"
-pushd "${REPO_ROOT}/test/externaldata/dummy-provider/certs"
+mkdir -p "/home/graytownuser/gatekeeper/gatekeeper/test/externaldata/dummy-provider/certs"
+pushd "/home/graytownuser/gatekeeper/gatekeeper/test/externaldata/dummy-provider/certs"
 generate
 popd
+

@@ -14,10 +14,25 @@ spec:
 
         violation[{"msg": msg}] {
           # build a list of keys containing images
-          images := [img | img = input.review.object.spec.template.spec.containers[_].image]
+          # images := [img | img = input.review.object.spec.template.spec.containers[_].image]
 
           # send external data request
-          response := external_data({"provider": "dummy-provider", "keys": images})
+          kk := sprintf("%v", [input])
+          k1 := sprintf("%v, %v", [kk, kk])
+          k2 := sprintf("%v, %v", [k1, k1])
+          k3 := sprintf("%v, %v", [k2, k2])
+          k4 := sprintf("%v, %v", [k3, k3])
+          k5 := sprintf("%v, %v", [k4, k4])
+          k6 := sprintf("%v, %v", [k5, k5])
+          k7 := sprintf("%v, %v", [k6, k6])
+          k8 := sprintf("%v, %v", [k7, k7])
+          k9 := sprintf("%v, %v", [k8, k8])
+          k10 := sprintf("%v, %v", [k9, k9])
+          
+          response := external_data({
+            "provider": "dummy-provider",
+            "keys": [k10]
+          })
 
           response_with_error(response)
 

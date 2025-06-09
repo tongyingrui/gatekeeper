@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -52,8 +53,13 @@ func main() {
 }
 
 func validate(w http.ResponseWriter, req *http.Request) {
+	// Log incoming request details
+	log.Printf("Received %s request to /validate from %s", req.Method, req.RemoteAddr)
+	log.Printf("Request headers: %v", req.Header)
+
 	// only accept POST requests
 	if req.Method != http.MethodPost {
+		log.Printf("Rejecting non-POST request: %s", req.Method)
 		sendResponse(nil, "only POST is allowed", w)
 		return
 	}
@@ -61,17 +67,30 @@ func validate(w http.ResponseWriter, req *http.Request) {
 	// read request body
 	requestBody, err := io.ReadAll(req.Body)
 	if err != nil {
+		log.Printf("Error reading request body: %v", err)
 		sendResponse(nil, fmt.Sprintf("unable to read request body: %v", err), w)
 		return
 	}
+
+	// Log request body size in a friendly way
+	bodySize := len(requestBody)
+	log.Printf("📦 Received request body with %d bytes (%s)", bodySize, formatSize(bodySize))
+
+	// Log raw request body for debugging
+	log.Printf("Request body: %s", string(requestBody))
 
 	// parse request body
 	var providerRequest externaldata.ProviderRequest
 	err = json.Unmarshal(requestBody, &providerRequest)
 	if err != nil {
+		log.Printf("Error unmarshaling request body: %v", err)
 		sendResponse(nil, fmt.Sprintf("unable to unmarshal request body: %v", err), w)
 		return
 	}
+
+	// Log parsed request details
+	log.Printf("Parsed request - Keys: %v", providerRequest.Request.Keys)
+	log.Printf("Provider request details: APIVersion=%s, Kind=%s", providerRequest.APIVersion, providerRequest.Kind)
 
 	results := make([]externaldata.Item, 0)
 	// iterate over all keys
@@ -144,3 +163,15 @@ func processTimeout(h http.HandlerFunc, duration time.Duration) http.HandlerFunc
 		}
 	}
 }
+
+// formatSize formats byte size in a human-readable way
+func formatSize(bytes int) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+}
+
