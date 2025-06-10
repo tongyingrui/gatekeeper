@@ -13,7 +13,7 @@ spec:
         run: approvals-validator
     spec:
       containers:
-      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.5
+      - image: yingruitestacr.azurecr.io/test/gatekeeperprovider:0.0.11
         imagePullPolicy: IfNotPresent
         name: approvals-validator
         ports:

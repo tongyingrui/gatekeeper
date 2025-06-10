@@ -16,7 +16,7 @@ generate() {
     echo "Generating server key and certificate for approvals provider..."
     openssl genrsa -out server.key 2048
     openssl req -newkey rsa:2048 -nodes -keyout server.key -subj "/CN=approvals-validator.${GATEKEEPER_NAMESPACE}" -out server.csr
-    openssl x509 -req -extfile <(printf "subjectAltName=DNS:approvals-validator.${GATEKEEPER_NAMESPACE}") -days 1 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+    openssl x509 -req -extfile <(printf "subjectAltName=DNS:approvals-validator.${GATEKEEPER_NAMESPACE}") -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
 }
 
 mkdir -p "/home/graytownuser/gatekeeper/gatekeeper/test/externaldata/dummy-provider/certs"
