@@ -98,26 +98,26 @@ func validate(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Processing key: %s", key)
 
 		// Providers should add a caching mechanism to avoid extra calls to external data sources.
-		admissionReview, err := parseAdmissionReview(key)
+		admissionRequest, err := parseAdmissionRequest(key)
 		if err != nil {
-			log.Printf("Failed to parse admission review from key: %v", err)
+			log.Printf("Failed to parse admission request from key: %v", err)
 			// If parsing fails, fall back to original behavior
 			results = append(results, externaldata.Item{
 				Key:   key,
-				Error: "Failed to parse admission review",
+				Error: "Failed to parse admission request",
 			})
 			continue
 		}
 
-		// Process the admission review
-		result := processAdmissionReview(key, admissionReview)
+		// Process the admission request
+		result := processAdmissionRequest(key, admissionRequest)
 		results = append(results, result)
 	}
 	sendResponse(&results, "", w)
 }
 
-// parseAdmissionReview attempts to parse the key and extract the review field
-func parseAdmissionReview(key string) (*admissionv1.AdmissionReview, error) {
+// parseAdmissionRequest attempts to parse the key and extract the review field
+func parseAdmissionRequest(key string) (*admissionv1.AdmissionRequest, error) {
 	// First, parse the key as a generic map to extract the review field
 	var keyData map[string]interface{}
 	err := json.Unmarshal([]byte(key), &keyData)
@@ -131,34 +131,29 @@ func parseAdmissionReview(key string) (*admissionv1.AdmissionReview, error) {
 		return nil, fmt.Errorf("no 'review' field found in key")
 	}
 
-	// Convert review data back to JSON and then unmarshal into AdmissionReview
+	// Convert review data back to JSON and then unmarshal into AdmissionRequest
 	reviewJSON, err := json.Marshal(reviewData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal review data: %v", err)
 	}
 
-	var admissionReview admissionv1.AdmissionReview
-	err = json.Unmarshal(reviewJSON, &admissionReview)
+	var admissionRequest admissionv1.AdmissionRequest
+	err = json.Unmarshal(reviewJSON, &admissionRequest)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal admission review: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal admission request: %v", err)
 	}
 
-	// Add validation to ensure we have the required fields
-	if admissionReview.Request == nil {
-		return nil, fmt.Errorf("admission review request is nil")
-	}
-
-	return &admissionReview, nil
+	return &admissionRequest, nil
 }
 
-// processAdmissionReview processes the parsed admission review and returns a result
-func processAdmissionReview(originalKey string, review *admissionv1.AdmissionReview) externaldata.Item {
+// processAdmissionRequest processes the parsed admission request and returns a result
+func processAdmissionRequest(originalKey string, request *admissionv1.AdmissionRequest) externaldata.Item {
 	// Add safety checks to prevent panics
-	if review == nil || review.Request == nil {
-		log.Printf("❌ Invalid admission review: review or request is nil")
+	if request == nil {
+		log.Printf("❌ Invalid admission request: request is nil")
 		return externaldata.Item{
 			Key:   originalKey,
-			Error: "Invalid admission review: missing request data",
+			Error: "Invalid admission request: missing request data",
 		}
 	}
 
@@ -168,20 +163,20 @@ func processAdmissionReview(originalKey string, review *admissionv1.AdmissionRev
 	kind := "unknown"
 	operation := "unknown"
 
-	if review.Request.Namespace != "" {
-		namespace = review.Request.Namespace
+	if request.Namespace != "" {
+		namespace = request.Namespace
 	}
-	if review.Request.Name != "" {
-		name = review.Request.Name
+	if request.Name != "" {
+		name = request.Name
 	}
-	if review.Request.Kind.Kind != "" {
-		kind = review.Request.Kind.Kind
+	if request.Kind.Kind != "" {
+		kind = request.Kind.Kind
 	}
-	if string(review.Request.Operation) != "" {
-		operation = string(review.Request.Operation)
+	if string(request.Operation) != "" {
+		operation = string(request.Operation)
 	}
 
-	log.Printf("Processing admission review for %s/%s of kind %s", namespace, name, kind)
+	log.Printf("Processing admission request for %s/%s of kind %s", namespace, name, kind)
 
 	// Extract useful information from the admission review
 	resourceInfo := fmt.Sprintf("Resource: %s/%s, Kind: %s, Operation: %s",
@@ -197,7 +192,7 @@ func processAdmissionReview(originalKey string, review *admissionv1.AdmissionRev
 	// Check if this is a SolutionContainer (Symphony specific)
 	if kind == "SolutionContainer" {
 		log.Printf("Processing Symphony SolutionContainer")
-		approved := checkSolutionContainerApproval(review)
+		approved := checkSolutionContainerApproval(request)
 		if approved {
 			result.Value = "approved"
 		} else {
@@ -212,14 +207,14 @@ func processAdmissionReview(originalKey string, review *admissionv1.AdmissionRev
 }
 
 // checkSolutionContainerApproval checks if a Symphony SolutionContainer should be approved
-func checkSolutionContainerApproval(review *admissionv1.AdmissionReview) bool {
+func checkSolutionContainerApproval(request *admissionv1.AdmissionRequest) bool {
 	// Symphony-specific approval logic
 	log.Printf("Checking Symphony SolutionContainer approval")
 
 	// Check for required annotations or labels
-	if review.Request.Object.Raw != nil {
+	if request.Object.Raw != nil {
 		var obj map[string]interface{}
-		if err := json.Unmarshal(review.Request.Object.Raw, &obj); err == nil {
+		if err := json.Unmarshal(request.Object.Raw, &obj); err == nil {
 			if metadata, ok := obj["metadata"].(map[string]interface{}); ok {
 				if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
 
@@ -264,10 +259,10 @@ func checkSolutionContainerApproval(review *admissionv1.AdmissionReview) bool {
 				log.Printf("❌ No metadata found in object")
 			}
 		} else {
-			log.Printf("❌ Failed to unmarshal review.Request.Object.Raw: %v", err)
+			log.Printf("❌ Failed to unmarshal request.Object.Raw: %v", err)
 		}
 	} else {
-		log.Printf("❌ review.Request.Object.Raw is nil")
+		log.Printf("❌ request.Object.Raw is nil")
 	}
 
 	// Default: require explicit approval
