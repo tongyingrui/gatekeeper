@@ -36,13 +36,17 @@ spec:
 
           response_with_error(response)
 
-          msg := sprintf("invalid response: %v", [response])
+          # Only show errors from the response, not the entire response
+          errors := [err | err := response.errors[_]]
+          system_errors := [err | err := response.system_error[_]]
+          all_errors := array.concat(errors, system_errors)
+          msg := sprintf("Validation errors: %v", [all_errors])
         }
 
         response_with_error(response) {
           count(response.errors) > 0
-          errs := response.errors[_]
-          contains(errs[1], "_invalid")
+          # errs := response.errors[_]
+          # contains(errs[1], "_invalid")
         }
 
         response_with_error(response) {

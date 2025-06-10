@@ -10,10 +10,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/open-policy-agent/frameworks/constraint/pkg/externaldata"
+	admissionv1 "k8s.io/api/admission/v1"
 )
 
 const (
@@ -95,30 +95,139 @@ func validate(w http.ResponseWriter, req *http.Request) {
 	results := make([]externaldata.Item, 0)
 	// iterate over all keys
 	for _, key := range providerRequest.Request.Keys {
+		log.Printf("Processing key: %s", key)
+
 		// Providers should add a caching mechanism to avoid extra calls to external data sources.
-
-		// following checks are for testing purposes only
-		// check if key contains "_systemError" to trigger a system error
-		if strings.HasSuffix(key, "_systemError") {
-			sendResponse(nil, "testing system error", w)
-			return
-		}
-
-		// check if key contains "error_" to trigger an error
-		if strings.HasPrefix(key, "error_") {
+		admissionReview, err := parseAdmissionReview(key)
+		if err != nil {
+			log.Printf("Failed to parse admission review from key: %v", err)
+			// If parsing fails, fall back to original behavior
 			results = append(results, externaldata.Item{
 				Key:   key,
-				Error: key + "_invalid",
+				Error: "Failed to parse admission review",
 			})
-		} else if !strings.HasSuffix(key, "_valid") {
-			// valid key will have "_valid" appended as return value
-			results = append(results, externaldata.Item{
-				Key:   key,
-				Value: key + "_valid",
-			})
+			continue
 		}
+
+		// Process the admission review
+		result := processAdmissionReview(key, admissionReview)
+		results = append(results, result)
 	}
 	sendResponse(&results, "", w)
+}
+
+// parseAdmissionReview attempts to parse the key as an admission review JSON
+func parseAdmissionReview(key string) (*admissionv1.AdmissionReview, error) {
+	var admissionReview admissionv1.AdmissionReview
+
+	// The key might be a stringified admission review, so we need to clean it up
+	// Remove any extra brackets or formatting that sprintf might have added
+	// cleanKey := strings.Trim(key, "[]")
+
+	err := json.Unmarshal([]byte(key), &admissionReview)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal admission review: %v", err)
+	}
+
+	return &admissionReview, nil
+}
+
+// processAdmissionReview processes the parsed admission review and returns a result
+func processAdmissionReview(originalKey string, review *admissionv1.AdmissionReview) externaldata.Item {
+	log.Printf("Processing admission review for %s/%s of kind %s",
+		review.Request.Namespace, review.Request.Name, review.Request.Kind.Kind)
+
+	// Extract useful information from the admission review
+	resourceInfo := fmt.Sprintf("Resource: %s/%s, Kind: %s, Operation: %s",
+		review.Request.Namespace, review.Request.Name,
+		review.Request.Kind.Kind, review.Request.Operation)
+
+	log.Printf("Resource details: %s", resourceInfo)
+
+	// Example processing logic - you can customize this based on your needs
+	result := externaldata.Item{
+		Key: originalKey,
+	}
+
+	// Check if this is a SolutionContainer (Symphony specific)
+	if review.Request.Kind.Kind == "SolutionContainer" {
+		log.Printf("Processing Symphony SolutionContainer")
+		approved := checkSolutionContainerApproval(review)
+		if approved {
+			result.Value = "approved"
+		} else {
+			result.Error = "solution container requires approval"
+		}
+		return result
+	}
+
+	// Default: error other resources
+	result.Error = "only Symphony SolutionContainer is supported Now"
+	return result
+}
+
+// checkSolutionContainerApproval checks if a Symphony SolutionContainer should be approved
+func checkSolutionContainerApproval(review *admissionv1.AdmissionReview) bool {
+	// Symphony-specific approval logic
+	log.Printf("Checking Symphony SolutionContainer approval")
+
+	// Check for required annotations or labels
+	if review.Request.Object.Raw != nil {
+		var obj map[string]interface{}
+		if err := json.Unmarshal(review.Request.Object.Raw, &obj); err == nil {
+			if metadata, ok := obj["metadata"].(map[string]interface{}); ok {
+				if annotations, ok := metadata["annotations"].(map[string]interface{}); ok {
+
+					// Check for Azure management additional properties
+					if additionalPropsStr, exists := annotations["management.azure.com/additionalProperties"]; exists {
+						if additionalPropsJSON, ok := additionalPropsStr.(string); ok {
+							var additionalProps map[string]interface{}
+							if err := json.Unmarshal([]byte(additionalPropsJSON), &additionalProps); err == nil {
+								log.Printf("📋 Found additional properties: %v", additionalProps)
+
+								// Check for yingruiapproved property
+								if yingruiApproved, exists := additionalProps["yingruiapproved"]; exists {
+									if approvedStr, ok := yingruiApproved.(string); ok {
+										log.Printf("🔍 Found yingruiapproved: %s", approvedStr)
+										// You can customize the approval logic here
+										// For now, accepting any non-empty value as approval
+										if approvedStr != "" && approvedStr != "false" {
+											log.Printf("✅ SolutionContainer has yingruiapproved: %s", approvedStr)
+											return true
+										} else {
+											log.Printf("❌ SolutionContainer yingruiapproved is false or empty")
+										}
+									} else {
+										log.Printf("❌ yingruiapproved property is not a string: %v", yingruiApproved)
+									}
+								} else {
+									log.Printf("❌ No yingruiapproved property found in additional properties")
+								}
+							} else {
+								log.Printf("❌ Failed to parse additional properties JSON: %v", err)
+							}
+						} else {
+							log.Printf("❌ additionalProperties annotation is not a string: %v", additionalPropsStr)
+						}
+					} else {
+						log.Printf("❌ No management.azure.com/additionalProperties annotation found")
+					}
+				} else {
+					log.Printf("❌ No annotations found in metadata")
+				}
+			} else {
+				log.Printf("❌ No metadata found in object")
+			}
+		} else {
+			log.Printf("❌ Failed to unmarshal review.Request.Object.Raw: %v", err)
+		}
+	} else {
+		log.Printf("❌ review.Request.Object.Raw is nil")
+	}
+
+	// Default: require explicit approval
+	log.Printf("❌ SolutionContainer approval not found or invalid")
+	return false
 }
 
 // sendResponse sends back the response to Gatekeeper.
@@ -174,4 +283,3 @@ func formatSize(bytes int) string {
 		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
 	}
 }
-
