@@ -116,17 +116,36 @@ func validate(w http.ResponseWriter, req *http.Request) {
 	sendResponse(&results, "", w)
 }
 
-// parseAdmissionReview attempts to parse the key as an admission review JSON
+// parseAdmissionReview attempts to parse the key and extract the review field
 func parseAdmissionReview(key string) (*admissionv1.AdmissionReview, error) {
+	// First, parse the key as a generic map to extract the review field
+	var keyData map[string]interface{}
+	err := json.Unmarshal([]byte(key), &keyData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal key as JSON: %v", err)
+	}
+
+	// Extract the review field
+	reviewData, exists := keyData["review"]
+	if !exists {
+		return nil, fmt.Errorf("no 'review' field found in key")
+	}
+
+	// Convert review data back to JSON and then unmarshal into AdmissionReview
+	reviewJSON, err := json.Marshal(reviewData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal review data: %v", err)
+	}
+
 	var admissionReview admissionv1.AdmissionReview
-
-	// The key might be a stringified admission review, so we need to clean it up
-	// Remove any extra brackets or formatting that sprintf might have added
-	// cleanKey := strings.Trim(key, "[]")
-
-	err := json.Unmarshal([]byte(key), &admissionReview)
+	err = json.Unmarshal(reviewJSON, &admissionReview)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal admission review: %v", err)
+	}
+
+	// Add validation to ensure we have the required fields
+	if admissionReview.Request == nil {
+		return nil, fmt.Errorf("admission review request is nil")
 	}
 
 	return &admissionReview, nil
@@ -134,13 +153,39 @@ func parseAdmissionReview(key string) (*admissionv1.AdmissionReview, error) {
 
 // processAdmissionReview processes the parsed admission review and returns a result
 func processAdmissionReview(originalKey string, review *admissionv1.AdmissionReview) externaldata.Item {
-	log.Printf("Processing admission review for %s/%s of kind %s",
-		review.Request.Namespace, review.Request.Name, review.Request.Kind.Kind)
+	// Add safety checks to prevent panics
+	if review == nil || review.Request == nil {
+		log.Printf("❌ Invalid admission review: review or request is nil")
+		return externaldata.Item{
+			Key:   originalKey,
+			Error: "Invalid admission review: missing request data",
+		}
+	}
+
+	// Safe access with nil checks
+	namespace := "unknown"
+	name := "unknown"
+	kind := "unknown"
+	operation := "unknown"
+
+	if review.Request.Namespace != "" {
+		namespace = review.Request.Namespace
+	}
+	if review.Request.Name != "" {
+		name = review.Request.Name
+	}
+	if review.Request.Kind.Kind != "" {
+		kind = review.Request.Kind.Kind
+	}
+	if string(review.Request.Operation) != "" {
+		operation = string(review.Request.Operation)
+	}
+
+	log.Printf("Processing admission review for %s/%s of kind %s", namespace, name, kind)
 
 	// Extract useful information from the admission review
 	resourceInfo := fmt.Sprintf("Resource: %s/%s, Kind: %s, Operation: %s",
-		review.Request.Namespace, review.Request.Name,
-		review.Request.Kind.Kind, review.Request.Operation)
+		namespace, name, kind, operation)
 
 	log.Printf("Resource details: %s", resourceInfo)
 
@@ -150,7 +195,7 @@ func processAdmissionReview(originalKey string, review *admissionv1.AdmissionRev
 	}
 
 	// Check if this is a SolutionContainer (Symphony specific)
-	if review.Request.Kind.Kind == "SolutionContainer" {
+	if kind == "SolutionContainer" {
 		log.Printf("Processing Symphony SolutionContainer")
 		approved := checkSolutionContainerApproval(review)
 		if approved {
