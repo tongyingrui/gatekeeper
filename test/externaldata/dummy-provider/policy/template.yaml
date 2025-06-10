@@ -37,7 +37,8 @@ spec:
           response_with_error(response)
 
           # Only show errors from the response, not the entire response
-          errors := [err | err := response.errors[_]]
+          # Extract only the error messages (second element) from the errors array
+          errors := [err[1] | err := response.errors[_]]
           system_errors := [err | err := response.system_error[_]]
           all_errors := array.concat(errors, system_errors)
           msg := sprintf("Validation errors: %v", [all_errors])
